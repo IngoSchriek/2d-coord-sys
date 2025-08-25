@@ -99,6 +99,11 @@ class GraphicsApp:
         self.canvas.bind("<Button-4>", lambda e: self.zoom_window(e, 0.9))
         self.canvas.bind("<Button-5>", lambda e: self.zoom_window(e, 1.1))
 
+        self.canvas.bind("<ButtonPress-1>", lambda e: self.on_mouse_press(e))
+        self.canvas.bind("<B1-Motion>", lambda e: self.on_mouse_drag(e))
+        self.canvas.bind("<ButtonRelease-1>", lambda e: self.on_mouse_release(e))
+        self._drag_data = {"x": 0, "y": 0}
+
         self.redraw()
 
     def add_object(self):
@@ -162,3 +167,23 @@ class GraphicsApp:
                 if len(screen_coords) > 1:
                     self.canvas.create_line(screen_coords, fill=theme.WIREFRAME_COLOR, width=2)
                     self.canvas.create_line([screen_coords[-1], screen_coords[0]], fill=theme.WIREFRAME_COLOR, width=2)
+        
+    def on_mouse_press(self, event):
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+        self.canvas.config(cursor="fleur")
+
+    def on_mouse_drag(self, event):
+        dx = event.x - self._drag_data["x"]
+        dy = event.y - self._drag_data["y"]
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+
+        dx_wc = -dx * (self.window.width() / self.viewport.width())
+        dy_wc = -dy * (self.window.height() / self.viewport.height())
+
+        self.window.move(dx_wc, -dy_wc)
+        self.redraw()
+
+    def on_mouse_release(self, event):
+        self.canvas.config(cursor="arrow")
