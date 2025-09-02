@@ -8,7 +8,8 @@ from src.Point import Point
 from src.Wireframe import Wireframe
 from src.ObjectCreationWindow import ObjectCreationWindow
 import src.theme as theme
-
+from src.Transformations import *
+import numpy as np
 
 class GraphicsApp:
     def __init__(self, root: tk.Tk):
@@ -89,6 +90,15 @@ class GraphicsApp:
 
         info_text = "Navegação:\n- Setas do teclado para mover\n- Scroll do mouse para zoom"
         ttk.Label(self.controls_frame, text=info_text, justify=tk.LEFT).pack(fill=tk.X, pady=(20, 0))
+
+        # Menu de Transformações
+        menubar = tk.Menu(self.root)
+        transform_menu = tk.Menu(menubar, tearoff=0)
+        transform_menu.add_command(label="Translação", command=self.translate_object)
+        transform_menu.add_command(label="Escala", command=self.scale_object)
+        transform_menu.add_command(label="Rotação", command=self.rotate_object)
+        menubar.add_cascade(label="Transformações", menu=transform_menu)
+        self.root.config(menu=menubar)
 
         self.root.bind("<KeyPress-Up>", lambda e: self.move_window(0, 50))
         self.root.bind("<KeyPress-Down>", lambda e: self.move_window(0, -50))
@@ -187,3 +197,87 @@ class GraphicsApp:
 
     def on_mouse_release(self, event):
         self.canvas.config(cursor="arrow")
+
+    def get_selected_object(self):
+        selection = self.objects_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Aviso", "Selecione um objeto na lista.")
+            return None
+        index = selection[0]
+        return self.display_file.objects[index]
+
+
+    def translate_object(self):
+        obj = self.get_selected_object()
+        if not obj:
+            return
+
+        def apply():
+            try:
+                dx = float(entry_dx.get())
+                dy = float(entry_dy.get())
+                matrix = translation_matrix(dx, dy)
+                obj.apply_transformation(matrix)
+                self.redraw()
+                top.destroy()
+            except ValueError:
+                messagebox.showerror("Erro", "Digite números válidos.")
+
+        top = tk.Toplevel(self.root)
+        top.title("Translação")
+        tk.Label(top, text="dx:").grid(row=0, column=0)
+        entry_dx = tk.Entry(top); entry_dx.grid(row=0, column=1)
+        tk.Label(top, text="dy:").grid(row=1, column=0)
+        entry_dy = tk.Entry(top); entry_dy.grid(row=1, column=1)
+        tk.Button(top, text="Aplicar", command=apply).grid(row=2, column=0, columnspan=2)
+
+    def scale_object(self):
+        obj = self.get_selected_object()
+        if not obj:
+            return
+
+        def apply():
+            try:
+                sx = float(entry_sx.get())
+                sy = float(entry_sy.get())
+
+                transforms = [('scale', (sx, sy))]
+                matrix = build_transformation_matrix(transforms, center=obj.get_center())
+
+                obj.apply_transformation(matrix)
+                self.redraw()
+                top.destroy()
+            except ValueError:
+                messagebox.showerror("Erro", "Digite números válidos.")
+
+        top = tk.Toplevel(self.root)
+        top.title("Escala")
+        tk.Label(top, text="sx:").grid(row=0, column=0)
+        entry_sx = tk.Entry(top); entry_sx.grid(row=0, column=1)
+        tk.Label(top, text="sy:").grid(row=1, column=0)
+        entry_sy = tk.Entry(top); entry_sy.grid(row=1, column=1)
+        tk.Button(top, text="Aplicar", command=apply).grid(row=2, column=0, columnspan=2)
+
+
+    def rotate_object(self):
+        obj = self.get_selected_object()
+        if not obj:
+            return
+
+        def apply():
+            try:
+                angle = float(entry_angle.get())
+                transforms = [('rotate', angle)]
+                matrix = build_transformation_matrix(transforms, center=obj.get_center())
+
+                obj.apply_transformation(matrix)
+                self.redraw()
+                top.destroy()
+            except ValueError:
+                messagebox.showerror("Erro", "Digite números válidos.")
+
+        top = tk.Toplevel(self.root)
+        top.title("Rotação")
+        tk.Label(top, text="Ângulo (graus):").grid(row=0, column=0)
+        entry_angle = tk.Entry(top); entry_angle.grid(row=0, column=1)
+        tk.Button(top, text="Aplicar", command=apply).grid(row=1, column=0, columnspan=2)
