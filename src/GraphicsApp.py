@@ -10,6 +10,7 @@ from src.ObjectCreationWindow import ObjectCreationWindow
 import src.theme as theme
 from src.Transformations import *
 import numpy as np
+from math import cos, sin, radians
 
 class GraphicsApp:
     def __init__(self, root: tk.Tk):
@@ -46,6 +47,12 @@ class GraphicsApp:
 
         self.controls_frame = ttk.LabelFrame(self.main_frame, text="Controles", padding="10")
         self.controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+
+        ttk.Label(self.controls_frame, text="Rotação da Window (°):").pack(fill=tk.X, pady=(10, 5))
+        self.win_angle_var = tk.StringVar(value="0")
+        angle_row = ttk.Frame(self.controls_frame); angle_row.pack(fill=tk.X)
+        ttk.Entry(angle_row, textvariable=self.win_angle_var, width=8).pack(side=tk.LEFT)
+        ttk.Button(angle_row, text="Aplicar", command=self.apply_window_rotation).pack(side=tk.LEFT, padx=5)
 
         self.canvas_frame = ttk.Frame(self.main_frame)
         self.canvas_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -149,8 +156,7 @@ class GraphicsApp:
 
     def move_window(self, dx_wc: float, dy_wc: float):
         move_factor = 0.05
-        self.window.move(self.window.width() * move_factor * (dx_wc / 50),
-                        self.window.height() * move_factor * (dy_wc / 50))
+        self.window.move_local(self.window.width() * move_factor * (dx_local / 50), self.window.height() * move_factor * (dy_local / 50))
         self.redraw()
 
     def zoom_window(self, event, factor=None):
@@ -189,10 +195,10 @@ class GraphicsApp:
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
 
-        dx_wc = -dx * (self.window.width() / self.viewport.width())
-        dy_wc = -dy * (self.window.height() / self.viewport.height())
+        dx_local_wc = -dx * (self.window.width()  / self.viewport.width())
+        dy_local_wc =  dy * (self.window.height() / self.viewport.height())
 
-        self.window.move(dx_wc, -dy_wc)
+        self.window.move_local(dx_local_wc, dy_local_wc)
         self.redraw()
 
     def on_mouse_release(self, event):
@@ -214,9 +220,12 @@ class GraphicsApp:
 
         def apply():
             try:
-                dx = float(entry_dx.get())
-                dy = float(entry_dy.get())
-                matrix = translation_matrix(dx, dy)
+                dx_local = float(entry_dx.get())
+                dy_local = float(entry_dy.get())
+                theta = radians(self.window.angle)
+                dx_wc =  cos(theta) * dx_local - sin(theta) * dy_local
+                dy_wc =  sin(theta) * dx_local + cos(theta) * dy_local
+                matrix = translation_matrix(dx_wc, dy_wc)
                 obj.apply_transformation(matrix)
                 self.redraw()
                 top.destroy()
@@ -281,3 +290,11 @@ class GraphicsApp:
         tk.Label(top, text="Ângulo (graus):").grid(row=0, column=0)
         entry_angle = tk.Entry(top); entry_angle.grid(row=0, column=1)
         tk.Button(top, text="Aplicar", command=apply).grid(row=1, column=0, columnspan=2)
+
+    def apply_window_rotation(self):
+        try:
+            angle = float(self.win_angle_var.get())
+            self.window.set_angle(angle)
+            self.redraw()
+        except ValueError:
+            messagebox.showerror("Erro", "Ângulo inválido.")

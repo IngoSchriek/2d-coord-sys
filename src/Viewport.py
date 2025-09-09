@@ -1,6 +1,6 @@
 from src.Window import Window
 from typing import Tuple
-
+import math
 
 class Viewport:
     def __init__(self, x_min: int, y_min: int, x_max: int, y_max: int):
@@ -14,23 +14,25 @@ class Viewport:
         return self.y_max - self.y_min
 
 
-def transform_coordinates(coord: Tuple[float, float], window: Window, viewport: Viewport) -> Tuple[int, int]:
-    """ Fórmulas originárias da igualdade (o mesmo para Y)
-    xw - xwmin          xv - xvmin
-    -------------   =   -------------
-    xwmax - xwmin       xvmax - xvmin
-    """
-    xw, yw = coord
-    xv_max, yv_max = viewport.x_max, viewport.y_max
-    xw_max, yw_max = window.x_max, window.y_max
-    xv_min, yv_min = viewport.x_min, viewport.y_min
-    xw_min, yw_min = window.x_min, window.y_min
+def transform_coordinates(point, window, viewport) -> tuple[int, int]:
+    u, v = wc_to_ppc(point, window)
+    return ppc_to_screen(u, v, viewport)
 
-    sx = (xw - xw_min) / (xw_max - xw_min)
-    sy = (yw - yw_min) / (yw_max - yw_min)
+def wc_to_ppc(point, window) -> tuple[float, float]:
+    #tira centro; rotaciona por -theta; normaliza para [-w/2,+w/2]->[0,1].
+    xw, yw = point
+    cx, cy = window.center()
+    theta = math.radians(window.angle)
+    cos_t, sin_t = math.cos(-theta), math.sin(-theta)
 
-    xv = xv_min + sx * (xv_max - xv_min)
-    yv = yv_min + (1 - sy) * (yv_max - yv_min) # (1 - sy) inverte o eixo Y
+    xr =  cos_t * (xw - cx) - sin_t * (yw - cy)
+    yr =  sin_t * (xw - cx) + cos_t * (yw - cy)
 
-    return int(xv), int(yv)
+    u = (xr / window.width())  + 0.5
+    v = (yr / window.height()) + 0.5
+    return u, v
 
+def ppc_to_screen(u, v, viewport: Viewport) -> tuple[int, int]:
+    x = viewport.x_min + u * viewport.width()
+    y = viewport.y_max - v * viewport.height()  # inverte v
+    return int(round(x)), int(round(y))
