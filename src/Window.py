@@ -2,6 +2,7 @@ class Window:
     def __init__(self, x_min: float, y_min: float, x_max: float, y_max: float):
         self.x_min, self.y_min = x_min, y_min
         self.x_max, self.y_max = x_max, y_max
+        self.angle = 0.0
 
     def width(self):
         return self.x_max - self.x_min
@@ -30,3 +31,6 @@ class Window:
         self.x_max = center_x + new_width / 2
         self.y_min = center_y - new_height / 2
         self.y_max = center_y + new_height / 2
+    
+    def rotate(self, angle: float):
+        self.angle += angle

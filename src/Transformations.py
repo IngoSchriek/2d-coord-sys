@@ -8,7 +8,6 @@ def translation_matrix(dx, dy):
         [0, 0, 1]
     ])
 
-#TODO: adicionar possibilidade de passar o centro como param
 def scaling_matrix(sx, sy):
     return np.array([
         [sx, 0, 0],
@@ -16,37 +15,40 @@ def scaling_matrix(sx, sy):
         [0, 0, 1]
     ])
 
-def rotation_matrix(angle):
+def rotation_matrix(angle, center=(0, 0)):
     rad = math.radians(angle)
-    cos, sin = math.cos(rad), math.sin(rad) 
-    return np.array([
+    cos, sin = math.cos(rad), math.sin(rad)
+    cx, cy = center
+
+    to_origin = translation_matrix(-cx, -cy)
+    rotate = np.array([
         [cos, -sin, 0],
         [sin, cos, 0],
         [0, 0, 1]
     ])
+    from_origin = translation_matrix(cx, cy)
+    
+    return np.dot(from_origin, np.dot(rotate, to_origin))
+
 
 def build_transformation_matrix(transformations, center=(0, 0)):
     cx, cy = center
     result = np.identity(3)
 
     for t_type, params in transformations:
+        matrix = np.identity(3)
         if t_type == 'translate':
             dx, dy = params
             matrix = translation_matrix(dx, dy)
         elif t_type == 'scale':
             sx, sy = params
-            # Escala em torno do centro
             matrix = np.dot(
                 np.dot(translation_matrix(cx, cy), scaling_matrix(sx, sy)),
                 translation_matrix(-cx, -cy)
             )
         elif t_type == 'rotate':
             angle = params
-            # Rotação em torno do centro
-            matrix = np.dot(
-                np.dot(translation_matrix(cx, cy), rotation_matrix(angle)),
-                translation_matrix(-cx, -cy)
-            )
+            matrix = rotation_matrix(angle, center=(cx, cy))
         else:
             raise ValueError(f"Tipo de transformação desconhecido: {t_type}")
 
