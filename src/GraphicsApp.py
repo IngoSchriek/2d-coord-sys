@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from src.Window import Window
 from src.Viewport import Viewport, transform_coordinates
 from src.DisplayFile import DisplayFile
@@ -9,6 +9,7 @@ from src.Wireframe import Wireframe
 from src.ObjectCreationWindow import ObjectCreationWindow
 import src.theme as theme
 from src.Transformations import *
+from src.OBJHandler import OBJHandler
 import numpy as np
 from math import cos, sin, radians
 
@@ -98,8 +99,14 @@ class GraphicsApp:
         info_text = "Navegação:\n- Setas do teclado para mover\n- Scroll do mouse para zoom"
         ttk.Label(self.controls_frame, text=info_text, justify=tk.LEFT).pack(fill=tk.X, pady=(20, 0))
 
-        # Menu de Transformações
+        # Menus
         menubar = tk.Menu(self.root)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Importar .obj", command=self.import_obj)
+        file_menu.add_command(label="Exportar .obj", command=self.export_obj)
+        menubar.add_cascade(label="Arquivo", menu=file_menu)
+
         transform_menu = tk.Menu(menubar, tearoff=0)
         transform_menu.add_command(label="Translação", command=self.translate_object)
         transform_menu.add_command(label="Escala", command=self.scale_object)
@@ -298,3 +305,35 @@ class GraphicsApp:
             self.redraw()
         except ValueError:
             messagebox.showerror("Erro", "Ângulo inválido.")
+    
+    def import_obj(self):
+        filepath = filedialog.askopenfilename(
+            title="Abrir Arquivo .obj",
+            filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
+        )
+        if not filepath:
+            return
+        
+        try:
+            self.display_file = OBJHandler.load_from_obj(filepath)
+            self.objects_listbox.delete(0, tk.END)
+            for obj in self.display_file.objects:
+                self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
+            self.redraw()
+        except Exception as e:
+            messagebox.showerror("Erro de Importação", f"Não foi possível ler o arquivo:\n{e}")
+
+    def export_obj(self):
+        filepath = filedialog.asksaveasfilename(
+            title="Salvar Arquivo .obj",
+            defaultextension=".obj",
+            filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
+        )
+        if not filepath:
+            return
+        
+        try:
+            OBJHandler.save_to_obj(self.display_file, filepath)
+            messagebox.showinfo("Sucesso", f"Cena salva em {filepath}")
+        except Exception as e:
+            messagebox.showerror("Erro de Exportação", f"Não foi possível salvar o arquivo:\n{e}")
