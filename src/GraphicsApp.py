@@ -10,6 +10,7 @@ from src.ObjectCreationWindow import ObjectCreationWindow
 import src.theme as theme
 from src.Transformations import *
 from src.OBJHandler import OBJHandler
+from src.Clipping import *
 import numpy as np
 from math import cos, sin, radians
 
@@ -40,7 +41,8 @@ class GraphicsApp:
         self.root.option_add('*TCombobox*Listbox.selectForeground', theme.FG_COLOR)
 
         self.display_file = DisplayFile()
-        self.viewport = Viewport(0, 0, 800, 800)
+        # TODO: ajeitar dimensao da viewport nas prox entregas
+        self.viewport = Viewport(10, 10, 780, 780)  # para testar clipping
         self.window = Window(-500.0, -500.0, 500.0, 500.0)
 
         self.main_frame = ttk.Frame(root, padding="10")
@@ -54,6 +56,11 @@ class GraphicsApp:
         angle_row = ttk.Frame(self.controls_frame); angle_row.pack(fill=tk.X)
         ttk.Entry(angle_row, textvariable=self.win_angle_var, width=8).pack(side=tk.LEFT)
         ttk.Button(angle_row, text="Aplicar", command=self.apply_window_rotation).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(self.controls_frame, text="Algoritmo de Clipping (Linhas):").pack(fill=tk.X, pady=(10, 5))
+        self.line_clip_alg = tk.StringVar(value="CS")
+        ttk.Radiobutton(self.controls_frame, text="Cohen-Sutherland", variable=self.line_clip_alg, value="CS").pack(anchor="w")
+        ttk.Radiobutton(self.controls_frame, text="Liang-Barsky", variable=self.line_clip_alg, value="LB").pack(anchor="w")
 
         self.canvas_frame = ttk.Frame(self.main_frame)
         self.canvas_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -161,9 +168,9 @@ class GraphicsApp:
         self.objects_listbox.delete(0, tk.END)
         self.redraw()
 
-    def move_window(self, dx_wc: float, dy_wc: float):
+    def move_window(self, dx_local: float, dy_local: float):
         move_factor = 0.05
-        self.window.move_local(self.window.width() * move_factor * (dx_local / 50), self.window.height() * move_factor * (dy_local / 50))
+        self.window.move_local(self.window.width() * move_factor * (dx_local / 50), self.window.height() * move_factor * (-dy_local / 50))
         self.redraw()
 
     def zoom_window(self, event, factor=None):
@@ -178,18 +185,42 @@ class GraphicsApp:
     def redraw(self):
         self.canvas.delete("all")
         for obj in self.display_file.objects:
-            screen_coords = [transform_coordinates(p, self.window, self.viewport) for p in obj.world_coords]
+            clipped = None
 
             if obj.type == "Point":
-                for x, y in screen_coords:
-                    self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=theme.POINT_COLOR,
-                                            outline=theme.POINT_COLOR)
+                if clip_point(obj.world_coords[0], self.window):
+                    clipped = [obj.world_coords[0]]
+
             elif obj.type == "Line":
-                self.canvas.create_line(screen_coords, fill=theme.LINE_COLOR, width=2)
+                if self.line_clip_alg.get() == "CS":
+                    clipped = clip_line_cs(obj.world_coords[0], obj.world_coords[1], self.window)
+                else:
+                    clipped = clip_line_lb(obj.world_coords[0], obj.world_coords[1], self.window)
+
             elif obj.type == "Wireframe":
-                if len(screen_coords) > 1:
-                    self.canvas.create_line(screen_coords, fill=theme.WIREFRAME_COLOR, width=2)
-                    self.canvas.create_line([screen_coords[-1], screen_coords[0]], fill=theme.WIREFRAME_COLOR, width=2)
+                clipped = clip_polygon_sh(obj.world_coords, self.window)
+
+            if clipped:
+                screen_coords = [transform_coordinates(p, self.window, self.viewport) for p in clipped]
+
+                if obj.type == "Point":
+                    for x, y in screen_coords:
+                        self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, 
+                                            fill=theme.POINT_COLOR, outline=theme.POINT_COLOR)
+                
+                elif obj.type == "Line":
+                    if len(screen_coords) >= 2:
+                        self.canvas.create_line(screen_coords, fill=theme.LINE_COLOR, width=2)
+                
+                elif obj.type == "Wireframe":
+                    if len(screen_coords) >= 2:
+                        for i in range(len(screen_coords)):
+                            next_i = (i + 1) % len(screen_coords)
+                            self.canvas.create_line(
+                                screen_coords[i][0], screen_coords[i][1],
+                                screen_coords[next_i][0], screen_coords[next_i][1],
+                                fill=theme.WIREFRAME_COLOR, width=2
+                            )
         
     def on_mouse_press(self, event):
         self._drag_data["x"] = event.x

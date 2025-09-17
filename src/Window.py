@@ -5,6 +5,12 @@ class Window:
         self.x_min, self.y_min = x_min, y_min
         self.x_max, self.y_max = x_max, y_max
         self.angle = 0.0
+    
+    def __iter__(self):
+        yield self.x_min
+        yield self.y_min
+        yield self.x_max
+        yield self.y_max
 
     def width(self):
         return self.x_max - self.x_min
