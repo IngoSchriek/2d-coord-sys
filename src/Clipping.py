@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 def ppc_to_wc(u, v, window):
     xr = (u - 0.5) * window.width()
@@ -190,3 +191,62 @@ def clip_polygon_sh(polygon, window):
         return [ppc_to_wc(u, v, window) for u, v in clipped_ppc]
     else:
         return []
+
+def de_casteljau(points, t):
+    if len(points) == 1:
+        return points[0]
+    else:
+        new_points = []
+        for i in range(len(points) - 1):
+            x = (1 - t) * points[i][0] + t * points[i+1][0]
+            y = (1 - t) * points[i][1] + t * points[i+1][1]
+            new_points.append((x, y))
+        return de_casteljau(new_points, t)
+
+def subdivide_bezier(points, t):
+    p = np.array(points)
+    q = np.zeros_like(p)
+    r = np.zeros_like(p)
+
+    q[0] = p[0]
+    r[3] = p[3]
+
+    q[1] = (1-t)*p[0] + t*p[1]
+    r[2] = (1-t)*p[2] + t*p[3]
+    
+    p1_2 = (1-t)*p[1] + t*p[2]
+    
+    q[2] = (1-t)*q[1] + t*p1_2
+    r[1] = (1-t)*p1_2 + t*r[2]
+
+    q[3] = (1-t)*q[2] + t*r[1]
+    r[0] = q[3]
+
+    return q.tolist(), r.tolist()
+
+
+def clip_bezier(control_points, window):
+    ppc_points = [wc_to_ppc(p, window) for p in control_points]
+    
+    min_u = min(p[0] for p in ppc_points)
+    max_u = max(p[0] for p in ppc_points)
+    min_v = min(p[1] for p in ppc_points)
+    max_v = max(p[1] for p in ppc_points)
+
+    if max_u < 0.0 or min_u > 1.0 or max_v < 0.0 or min_v > 1.0: 
+        return []
+    
+    if min_u >= 0.0 and max_u <= 1.0 and min_v >= 0.0 and max_v <= 1.0: 
+        return [control_points]
+
+    if max(max_u-min_u, max_v-min_v) < 0.01:
+        clipped_line = clip_line_cs(control_points[0], control_points[-1], window)
+        return [clipped_line] if clipped_line else []
+    
+    q, r = subdivide_bezier(control_points, 0.5)
+    
+    clipped_curves = []
+    clipped_curves.extend(clip_bezier(q, window))
+    clipped_curves.extend(clip_bezier(r, window))
+    
+    return clipped_curves

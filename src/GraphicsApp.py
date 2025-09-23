@@ -6,6 +6,7 @@ from src.DisplayFile import DisplayFile
 from src.Line import Line
 from src.Point import Point
 from src.Wireframe import Wireframe
+from src.BezierCurve import BezierCurve
 from src.ObjectCreationWindow import ObjectCreationWindow
 import src.theme as theme
 from src.Transformations import *
@@ -83,7 +84,7 @@ class GraphicsApp:
         ttk.Label(self.controls_frame, text="Tipo:").pack(fill=tk.X, pady=(0, 5))
         self.obj_type_var = tk.StringVar(value="Point")
         self.obj_type_menu = ttk.Combobox(self.controls_frame, textvariable=self.obj_type_var,
-                                          values=["Point", "Line", "Wireframe"], state="readonly")
+                                          values=["Point", "Line", "Wireframe", "Bezier Curve"], state="readonly")
         self.obj_type_menu.pack(fill=tk.X, pady=(0, 10))
 
         self.add_button = ttk.Button(self.controls_frame, text="Adicionar Objeto", command=self.add_object)
@@ -157,6 +158,8 @@ class GraphicsApp:
                 obj = Line(name, coords)
             elif obj_type == "Wireframe":
                 obj = Wireframe(name, coords)
+            elif obj_type == "Bezier Curve":
+                obj = BezierCurve(name, coords)
 
             if obj:
                 self.display_file.add_object(obj)
@@ -200,27 +203,45 @@ class GraphicsApp:
             elif obj.type == "Wireframe":
                 clipped = clip_polygon_sh(obj.world_coords, self.window)
 
-            if clipped:
-                screen_coords = [transform_coordinates(p, self.window, self.viewport) for p in clipped]
+            elif obj.type == "Bezier Curve":
+                clipped_segments = []
+                for segment in obj.get_segments():
+                    clipped_segments.extend(clip_bezier(segment, self.window))
+                
+                if clipped_segments:
+                    screen_coords = []
+                    for segment in clipped_segments:
+                        points_to_draw = []
+                        for t in np.linspace(0, 1, 100):
+                            points_to_draw.append(de_casteljau(segment, t))
+                        screen_coords.extend([transform_coordinates(p, self.window, self.viewport) for p in points_to_draw])
+                    
+                    if len(screen_coords) >= 2:
+                        self.canvas.create_line(screen_coords, fill=theme.BEZIER_COLOR, width=2)
 
-                if obj.type == "Point":
-                    for x, y in screen_coords:
-                        self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, 
-                                            fill=theme.POINT_COLOR, outline=theme.POINT_COLOR)
-                
-                elif obj.type == "Line":
-                    if len(screen_coords) >= 2:
-                        self.canvas.create_line(screen_coords, fill=theme.LINE_COLOR, width=2)
-                
-                elif obj.type == "Wireframe":
-                    if len(screen_coords) >= 2:
-                        for i in range(len(screen_coords)):
-                            next_i = (i + 1) % len(screen_coords)
-                            self.canvas.create_line(
-                                screen_coords[i][0], screen_coords[i][1],
-                                screen_coords[next_i][0], screen_coords[next_i][1],
-                                fill=theme.WIREFRAME_COLOR, width=2
-                            )
+
+            if clipped:
+                if obj.type != "Bezier Curve": # A curva de Bézier já foi desenhada
+                    screen_coords = [transform_coordinates(p, self.window, self.viewport) for p in clipped]
+
+                    if obj.type == "Point":
+                        for x, y in screen_coords:
+                            self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, 
+                                                fill=theme.POINT_COLOR, outline=theme.POINT_COLOR)
+                    
+                    elif obj.type == "Line":
+                        if len(screen_coords) >= 2:
+                            self.canvas.create_line(screen_coords, fill=theme.LINE_COLOR, width=2)
+                    
+                    elif obj.type == "Wireframe":
+                        if len(screen_coords) >= 2:
+                            for i in range(len(screen_coords)):
+                                next_i = (i + 1) % len(screen_coords)
+                                self.canvas.create_line(
+                                    screen_coords[i][0], screen_coords[i][1],
+                                    screen_coords[next_i][0], screen_coords[next_i][1],
+                                    fill=theme.WIREFRAME_COLOR, width=2
+                                )
         
     def on_mouse_press(self, event):
         self._drag_data["x"] = event.x

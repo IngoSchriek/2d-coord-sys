@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Tuple
 import src.theme as theme
+import re
 
 
 class ObjectCreationWindow(tk.Toplevel):
@@ -39,6 +40,8 @@ class ObjectCreationWindow(tk.Toplevel):
             self.create_line()
         elif self.obj_type == "Wireframe":
             self.create_wireframe()
+        elif self.obj_type == "Bezier Curve":
+            self.create_bezier()
 
         ok_button = ttk.Button(button_frame, text="Criar", command=self.on_ok)
         ok_button.pack(side=tk.RIGHT, padx=(5, 0))
@@ -100,6 +103,14 @@ class ObjectCreationWindow(tk.Toplevel):
         remove_button = ttk.Button(list_frame, text="Remover Selecionado", command=self.remove_point)
         remove_button.pack(side=tk.LEFT, padx=5)
 
+    def create_bezier(self):
+        ttk.Label(self.content_frame, text="Pontos de Controle: (x1,y1),(x2,y2),...").pack(anchor="w")
+        self.bezier_text = tk.Text(self.content_frame, height=10, width=40,
+                                   background=theme.WIDGET_BG, foreground=theme.FG_COLOR,
+                                   insertbackground=theme.FG_COLOR)
+        self.bezier_text.pack(fill=tk.BOTH, expand=True)
+        self.bezier_text.focus_set()
+
     def add_point(self):
         try:
             x = float(self.wf_entry_x.get())
@@ -138,10 +149,21 @@ class ObjectCreationWindow(tk.Toplevel):
                     messagebox.showwarning("Aviso", "Um Wireframe precisa de pelo menos 3 pontos.", parent=self)
                     return
                 self.result = self.wireframe_points
+            elif self.obj_type == "Bezier Curve":
+                text = self.bezier_text.get("1.0", tk.END).strip()
+                points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
+                if len(points) < 4:
+                     messagebox.showwarning("Aviso", "Uma curva de Bézier precisa de pelo menos 4 pontos.", parent=self)
+                     return
+                self.result = [(float(x), float(y)) for x, y in points]
+
             self.destroy()
         except ValueError:
             messagebox.showerror("Erro de Formato", "Todos os campos devem ser preenchidos com números válidos.",
                                  parent=self)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro: {e}", parent=self)
+
 
     def on_cancel(self):
         self.result = None
