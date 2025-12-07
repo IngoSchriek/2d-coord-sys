@@ -42,6 +42,8 @@ class ObjectCreationWindow(tk.Toplevel):
             self.create_wireframe()
         elif self.obj_type == "Bezier Curve":
             self.create_bezier()
+        elif self.obj_type == "BSpline":
+            self.create_bezier()
 
         ok_button = ttk.Button(button_frame, text="Criar", command=self.on_ok)
         ok_button.pack(side=tk.RIGHT, padx=(5, 0))
@@ -154,6 +156,13 @@ class ObjectCreationWindow(tk.Toplevel):
                 points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
                 if len(points) < 4:
                      messagebox.showwarning("Aviso", "Uma curva de Bézier precisa de pelo menos 4 pontos.", parent=self)
+                     return
+                self.result = [(float(x), float(y)) for x, y in points]
+            elif self.obj_type == "BSpline":
+                text = self.bezier_text.get("1.0", tk.END).strip()
+                points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
+                if len(points) < 4:
+                     messagebox.showwarning("Aviso", "Uma B-Spline precisa de pelo menos 4 pontos de controle.", parent=self)
                      return
                 self.result = [(float(x), float(y)) for x, y in points]
 

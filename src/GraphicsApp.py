@@ -7,6 +7,7 @@ from src.Line import Line
 from src.Point import Point
 from src.Wireframe import Wireframe
 from src.BezierCurve import BezierCurve
+from src.BSpline import BSpline
 from src.ObjectCreationWindow import ObjectCreationWindow
 import src.theme as theme
 from src.Transformations import *
@@ -84,7 +85,7 @@ class GraphicsApp:
         ttk.Label(self.controls_frame, text="Tipo:").pack(fill=tk.X, pady=(0, 5))
         self.obj_type_var = tk.StringVar(value="Point")
         self.obj_type_menu = ttk.Combobox(self.controls_frame, textvariable=self.obj_type_var,
-                                          values=["Point", "Line", "Wireframe", "Bezier Curve"], state="readonly")
+                                          values=["Point", "Line", "Wireframe", "Bezier Curve", "BSpline"], state="readonly")
         self.obj_type_menu.pack(fill=tk.X, pady=(0, 10))
 
         self.add_button = ttk.Button(self.controls_frame, text="Adicionar Objeto", command=self.add_object)
@@ -160,7 +161,8 @@ class GraphicsApp:
                 obj = Wireframe(name, coords)
             elif obj_type == "Bezier Curve":
                 obj = BezierCurve(name, coords)
-
+            elif obj_type == "BSpline":
+                obj = BSpline(name, coords)
             if obj:
                 self.display_file.add_object(obj)
                 self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
@@ -218,6 +220,23 @@ class GraphicsApp:
                     
                     if len(screen_coords) >= 2:
                         self.canvas.create_line(screen_coords, fill=theme.BEZIER_COLOR, width=2)
+            elif obj.type == "BSpline":
+                curve_points = obj.generate_points(num_steps=20) 
+                
+                for i in range(len(curve_points) - 1):
+                    p1 = curve_points[i]
+                    p2 = curve_points[i+1]
+                    
+                    segment_clipped = None
+                    if self.line_clip_alg.get() == "CS":
+                        segment_clipped = clip_line_cs(p1, p2, self.window)
+                    else:
+                        segment_clipped = clip_line_lb(p1, p2, self.window)
+                    
+                    if segment_clipped:
+                        sc = [transform_coordinates(p, self.window, self.viewport) for p in segment_clipped]
+                        if len(sc) >= 2:
+                            self.canvas.create_line(sc, fill=theme.BSPLINE_COLOR, width=2)
 
 
             if clipped:
