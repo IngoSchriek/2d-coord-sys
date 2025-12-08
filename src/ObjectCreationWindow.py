@@ -4,15 +4,14 @@ from typing import List, Tuple
 import src.theme as theme
 import re
 
-
 class ObjectCreationWindow(tk.Toplevel):
     def __init__(self, parent, obj_type: str):
         super().__init__(parent)
         self.transient(parent)
         self.title(f"Adicionar {obj_type}")
-        self.result: List[Tuple[float, float]] | None = None
+        self.result = None
         self.obj_type = obj_type
-
+        
         self.config(bg=theme.BG_COLOR)
         style = ttk.Style(self)
         style.theme_use('clam')
@@ -40,10 +39,10 @@ class ObjectCreationWindow(tk.Toplevel):
             self.create_line()
         elif self.obj_type == "Wireframe":
             self.create_wireframe()
-        elif self.obj_type == "Bezier Curve":
+        elif self.obj_type == "Bezier Curve" or self.obj_type == "BSpline":
             self.create_bezier()
-        elif self.obj_type == "BSpline":
-            self.create_bezier()
+        elif self.obj_type == "Bicubic Surface":
+            self.create_bicubic()
 
         ok_button = ttk.Button(button_frame, text="Criar", command=self.on_ok)
         ok_button.pack(side=tk.RIGHT, padx=(5, 0))
@@ -79,7 +78,7 @@ class ObjectCreationWindow(tk.Toplevel):
         self.entry_x1.focus_set()
 
     def create_wireframe(self):
-        self.wireframe_points: List[Tuple[float, float]] = []
+        self.wireframe_points = []
         add_frame = ttk.LabelFrame(self.content_frame, text="Novo Ponto", padding=5)
         add_frame.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(add_frame, text="X:").grid(row=0, column=0)
@@ -91,88 +90,72 @@ class ObjectCreationWindow(tk.Toplevel):
         add_button = ttk.Button(add_frame, text="Adicionar Ponto", command=self.add_point)
         add_button.grid(row=0, column=4, padx=5)
         self.wf_entry_x.focus_set()
-
         list_frame = ttk.LabelFrame(self.content_frame, text="Pontos Adicionados", padding=5)
         list_frame.pack(expand=True, fill=tk.BOTH)
-
-        self.points_listbox = tk.Listbox(
-            list_frame,
-            background=theme.WIDGET_BG,
-            foreground=theme.FG_COLOR,
-            selectbackground=theme.SELECT_BG
-        )
+        self.points_listbox = tk.Listbox(list_frame, background=theme.WIDGET_BG, foreground=theme.FG_COLOR, selectbackground=theme.SELECT_BG)
         self.points_listbox.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         remove_button = ttk.Button(list_frame, text="Remover Selecionado", command=self.remove_point)
         remove_button.pack(side=tk.LEFT, padx=5)
 
     def create_bezier(self):
         ttk.Label(self.content_frame, text="Pontos de Controle: (x1,y1),(x2,y2),...").pack(anchor="w")
-        self.bezier_text = tk.Text(self.content_frame, height=10, width=40,
-                                   background=theme.WIDGET_BG, foreground=theme.FG_COLOR,
-                                   insertbackground=theme.FG_COLOR)
+        self.bezier_text = tk.Text(self.content_frame, height=10, width=40, background=theme.WIDGET_BG, foreground=theme.FG_COLOR, insertbackground=theme.FG_COLOR)
         self.bezier_text.pack(fill=tk.BOTH, expand=True)
+        self.bezier_text.focus_set()
+    
+    def create_bicubic(self):
+        instrucoes = "Formato: (x,y,z),(x,y,z)... \nUse ';' para separar as linhas da matriz 4x4.\nSão necessários 16 pontos."
+        ttk.Label(self.content_frame, text=instrucoes).pack(anchor="w", pady=(0,5))
+        self.bezier_text = tk.Text(self.content_frame, height=12, width=50, background=theme.WIDGET_BG, foreground=theme.FG_COLOR, insertbackground=theme.FG_COLOR)
+        self.bezier_text.pack(fill=tk.BOTH, expand=True)
+        example = "(0,0,0),(10,0,10),(20,0,10),(30,0,0);\n(0,10,10),(10,10,20),(20,10,20),(30,10,10);\n(0,20,10),(10,20,20),(20,20,20),(30,20,10);\n(0,30,0),(10,30,10),(20,30,10),(30,30,0)"
+        self.bezier_text.insert("1.0", example)
         self.bezier_text.focus_set()
 
     def add_point(self):
         try:
             x = float(self.wf_entry_x.get())
             y = float(self.wf_entry_y.get())
-            point = (x, y)
-            self.wireframe_points.append(point)
+            self.wireframe_points.append((x, y))
             self.points_listbox.insert(tk.END, f"({x}, {y})")
             self.wf_entry_x.delete(0, tk.END)
             self.wf_entry_y.delete(0, tk.END)
             self.wf_entry_x.focus_set()
         except ValueError:
-            messagebox.showerror("Erro de Formato", "Por favor, insira números válidos para as coordenadas.",
-                                 parent=self)
+            messagebox.showerror("Erro de Formato", "Insira números válidos.", parent=self)
 
     def remove_point(self):
-        selected_indices = self.points_listbox.curselection()
-        if not selected_indices: return
-        for index in reversed(selected_indices):
-            self.points_listbox.delete(index)
-            del self.wireframe_points[index]
+        idx = self.points_listbox.curselection()
+        if not idx: return
+        for i in reversed(idx):
+            self.points_listbox.delete(i)
+            del self.wireframe_points[i]
 
     def on_ok(self):
         try:
             if self.obj_type == "Point":
-                x = float(self.entry_x.get())
-                y = float(self.entry_y.get())
-                self.result = [(x, y)]
+                self.result = [(float(self.entry_x.get()), float(self.entry_y.get()))]
             elif self.obj_type == "Line":
-                x1 = float(self.entry_x1.get())
-                y1 = float(self.entry_y1.get())
-                x2 = float(self.entry_x2.get())
-                y2 = float(self.entry_y2.get())
-                self.result = [(x1, y1), (x2, y2)]
+                self.result = [(float(self.entry_x1.get()), float(self.entry_y1.get())), (float(self.entry_x2.get()), float(self.entry_y2.get()))]
             elif self.obj_type == "Wireframe":
-                if len(self.wireframe_points) < 3:
-                    messagebox.showwarning("Aviso", "Um Wireframe precisa de pelo menos 3 pontos.", parent=self)
-                    return
+                if len(self.wireframe_points) < 3: raise ValueError("Wireframe precisa de 3 pontos.")
                 self.result = self.wireframe_points
-            elif self.obj_type == "Bezier Curve":
+            elif self.obj_type in ["Bezier Curve", "BSpline"]:
                 text = self.bezier_text.get("1.0", tk.END).strip()
                 points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
-                if len(points) < 4:
-                     messagebox.showwarning("Aviso", "Uma curva de Bézier precisa de pelo menos 4 pontos.", parent=self)
-                     return
+                if len(points) < 4: raise ValueError("Mínimo de 4 pontos.")
                 self.result = [(float(x), float(y)) for x, y in points]
-            elif self.obj_type == "BSpline":
+            elif self.obj_type == "Bicubic Surface":
                 text = self.bezier_text.get("1.0", tk.END).strip()
-                points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
-                if len(points) < 4:
-                     messagebox.showwarning("Aviso", "Uma B-Spline precisa de pelo menos 4 pontos de controle.", parent=self)
-                     return
-                self.result = [(float(x), float(y)) for x, y in points]
+                raw_points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
+                if len(raw_points) != 16:
+                    messagebox.showerror("Erro", f"São necessários exatamente 16 pontos. Encontrados: {len(raw_points)}", parent=self)
+                    return
+                self.result = [(float(x), float(y), float(z)) for x, y, z in raw_points]
 
             self.destroy()
-        except ValueError:
-            messagebox.showerror("Erro de Formato", "Todos os campos devem ser preenchidos com números válidos.",
-                                 parent=self)
         except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro: {e}", parent=self)
-
+            messagebox.showerror("Erro", f"Erro: {e}", parent=self)
 
     def on_cancel(self):
         self.result = None

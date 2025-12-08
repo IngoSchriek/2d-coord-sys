@@ -15,6 +15,7 @@ from src.OBJHandler import OBJHandler
 from src.Clipping import *
 from src.Objeto3D import Objeto3D
 from src.Ponto3D import Ponto3D
+from src.BicubicSurface import BicubicSurface
 import numpy as np
 
 class GraphicsApp:
@@ -99,7 +100,7 @@ class GraphicsApp:
         ttk.Label(self.controls_frame, text="Tipo:").pack(fill=tk.X, pady=(0, 5))
         self.obj_type_var = tk.StringVar(value="Point")
         self.obj_type_menu = ttk.Combobox(self.controls_frame, textvariable=self.obj_type_var,
-                                          values=["Point", "Line", "Wireframe", "Bezier Curve", "BSpline"], state="readonly")
+                                          values=["Point", "Line", "Wireframe", "Bezier Curve", "BSpline", "Bicubic Surface"], state="readonly")
         self.obj_type_menu.pack(fill=tk.X, pady=(0, 10))
 
         self.add_button = ttk.Button(self.controls_frame, text="Adicionar Objeto", command=self.add_object)
@@ -125,6 +126,7 @@ class GraphicsApp:
         menubar = tk.Menu(self.root)
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Importar .obj", command=self.import_obj)
+        file_menu.add_command(label="Importar Superfície (OBJ)", command=self.import_surface_obj)
         file_menu.add_command(label="Exportar .obj", command=self.export_obj)
         menubar.add_cascade(label="Arquivo", menu=file_menu)
 
@@ -188,6 +190,10 @@ class GraphicsApp:
                 obj = BezierCurve(name, coords)
             elif obj_type == "BSpline":
                 obj = BSpline(name, coords)
+            elif obj_type == "Bicubic Surface":
+                obj = BicubicSurface(name)
+                points_3d = [Ponto3D(x, y, z) for x, y, z in coords]
+                obj.add_patch(points_3d)
             if obj:
                 self.display_file.add_object(obj)
                 self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
@@ -437,24 +443,73 @@ class GraphicsApp:
             messagebox.showerror("Erro", "Ângulo inválido.")
     
     def import_obj(self):
-            filepath = filedialog.askopenfilename(
-                title="Abrir Arquivo .obj", 
-                filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
-            )
-            if not filepath: return
-            try:
-                imported_file = OBJHandler.load_from_obj(filepath)
-                for obj in imported_file.objects:
-                    original_name = obj.name
-                    count = 1
-                    while self.display_file.get_object_by_name(obj.name):
-                        obj.name = f"{original_name}_{count}"
-                        count += 1
-                    self.display_file.add_object(obj)
-                    self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
-                self.redraw()
-            except Exception as e:
-                messagebox.showerror("Erro de Importação", f"Não foi possível ler o arquivo:\n{e}")
+        filepath = filedialog.askopenfilename(
+            title="Abrir Arquivo .obj", 
+            filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
+        )
+        if not filepath: return
+        
+        try:
+            imported_file = OBJHandler.load_from_obj(filepath)
+            
+            for obj in imported_file.objects:
+                original_name = obj.name
+                count = 1
+                while self.display_file.get_object_by_name(obj.name):
+                    obj.name = f"{original_name}_{count}"
+                    count += 1
+                
+                self.display_file.add_object(obj)
+                self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
+            
+            self.redraw()
+        except Exception as e:
+            messagebox.showerror("Erro de Importação", f"Não foi possível ler o arquivo:\n{e}")
+
+    def import_surface_obj(self):
+        filepath = filedialog.askopenfilename(
+            title="Importar Superfície .obj",
+            filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
+        )
+        if not filepath: return
+
+        try:
+            vertices = []
+            with open(filepath, 'r') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if not parts: continue
+                    if parts[0] == 'v':
+                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                        vertices.append(Ponto3D(x, y, z))
+            
+            if len(vertices) < 16:
+                messagebox.showwarning("Aviso", "O arquivo precisa ter pelo menos 16 vértices para formar um patch.")
+                return
+            
+            if len(vertices) % 16 != 0:
+                messagebox.showwarning("Aviso", f"O número de vértices ({len(vertices)}) não é múltiplo de 16. Alguns pontos podem ser ignorados.")
+
+            name = "Superficie_Importada"
+            count = 1
+            while self.display_file.get_object_by_name(name):
+                name = f"Superficie_Importada_{count}"
+                count += 1
+            
+            surface = BicubicSurface(name)
+            
+            num_patches = len(vertices) // 16
+            for i in range(num_patches):
+                patch_points = vertices[i*16 : (i+1)*16]
+                surface.add_patch(patch_points)
+            
+            self.display_file.add_object(surface)
+            self.objects_listbox.insert(tk.END, f"{surface.name} ({surface.type})")
+            self.redraw()
+            messagebox.showinfo("Sucesso", f"Superfície criada com {num_patches} patches.")
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao importar superfície: {e}")
 
     def export_obj(self):
         filepath = filedialog.asksaveasfilename(title="Salvar Arquivo .obj", defaultextension=".obj", filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*")))
