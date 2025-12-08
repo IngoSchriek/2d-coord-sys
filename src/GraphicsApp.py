@@ -63,6 +63,16 @@ class GraphicsApp:
         ttk.Entry(angle_row, textvariable=self.win_angle_var, width=8).pack(side=tk.LEFT)
         ttk.Button(angle_row, text="Aplicar", command=self.apply_window_rotation).pack(side=tk.LEFT, padx=5)
 
+        ttk.Label(self.controls_frame, text="Projeção:").pack(fill=tk.X, pady=(10, 5))
+        self.use_perspective = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.controls_frame, text="Perspectiva", variable=self.use_perspective, command=self.redraw).pack(anchor="w")
+        
+        ttk.Label(self.controls_frame, text="Distância COP:").pack(fill=tk.X, pady=(5, 0))
+        self.cop_dist_var = tk.StringVar(value="200")
+        dist_row = ttk.Frame(self.controls_frame); dist_row.pack(fill=tk.X)
+        ttk.Entry(dist_row, textvariable=self.cop_dist_var, width=8).pack(side=tk.LEFT)
+        ttk.Button(dist_row, text="Set", command=self.redraw).pack(side=tk.LEFT, padx=5)
+
         ttk.Label(self.controls_frame, text="Algoritmo de Clipping (Linhas):").pack(fill=tk.X, pady=(10, 5))
         self.line_clip_alg = tk.StringVar(value="CS")
         ttk.Radiobutton(self.controls_frame, text="Cohen-Sutherland", variable=self.line_clip_alg, value="CS").pack(anchor="w")
@@ -204,14 +214,30 @@ class GraphicsApp:
 
     def redraw(self):
         self.canvas.delete("all")
+        
         view_mat = view_transform_matrix(self.vrp, self.vpn, self.vup)
+        
+        if self.use_perspective.get():
+            try:
+                d = float(self.cop_dist_var.get())
+                if d == 0: d = 1.0
+                persp_mat = perspective_matrix(d)
+                full_mat = persp_mat @ view_mat
+            except ValueError:
+                full_mat = view_mat
+        else:
+            full_mat = view_mat
 
         for obj in self.display_file.objects:
             if isinstance(obj, Objeto3D):
                 screen_segments = []
                 for p1, p2 in obj.segments:
-                    p1_prime = np.dot(view_mat, p1.coords)
-                    p2_prime = np.dot(view_mat, p2.coords)
+                    p1_prime = full_mat @ p1.coords
+                    p2_prime = full_mat @ p2.coords
+                    
+                    if self.use_perspective.get():
+                        if p1_prime[3] != 0: p1_prime = p1_prime / p1_prime[3]
+                        if p2_prime[3] != 0: p2_prime = p2_prime / p2_prime[3]
                     
                     sc1 = transform_coordinates((p1_prime[0], p1_prime[1]), self.window, self.viewport)
                     sc2 = transform_coordinates((p2_prime[0], p2_prime[1]), self.window, self.viewport)
@@ -411,16 +437,24 @@ class GraphicsApp:
             messagebox.showerror("Erro", "Ângulo inválido.")
     
     def import_obj(self):
-        filepath = filedialog.askopenfilename(title="Abrir Arquivo .obj", filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*")))
-        if not filepath: return
-        try:
-            self.display_file = OBJHandler.load_from_obj(filepath)
-            self.objects_listbox.delete(0, tk.END)
-            for obj in self.display_file.objects:
-                self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
-            self.redraw()
-        except Exception as e:
-            messagebox.showerror("Erro de Importação", f"Não foi possível ler o arquivo:\n{e}")
+            filepath = filedialog.askopenfilename(
+                title="Abrir Arquivo .obj", 
+                filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
+            )
+            if not filepath: return
+            try:
+                imported_file = OBJHandler.load_from_obj(filepath)
+                for obj in imported_file.objects:
+                    original_name = obj.name
+                    count = 1
+                    while self.display_file.get_object_by_name(obj.name):
+                        obj.name = f"{original_name}_{count}"
+                        count += 1
+                    self.display_file.add_object(obj)
+                    self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")
+                self.redraw()
+            except Exception as e:
+                messagebox.showerror("Erro de Importação", f"Não foi possível ler o arquivo:\n{e}")
 
     def export_obj(self):
         filepath = filedialog.asksaveasfilename(title="Salvar Arquivo .obj", defaultextension=".obj", filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*")))

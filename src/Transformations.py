@@ -95,3 +95,11 @@ def view_transform_matrix(vrp, vpn, vup):
 
     T = translation_matrix(-vrp[0], -vrp[1], -vrp[2])
     return R @ T
+
+def perspective_matrix(d):
+    return np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 1/d, 1]
+    ])
