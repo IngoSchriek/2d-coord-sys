@@ -13,14 +13,15 @@ import src.theme as theme
 from src.Transformations import *
 from src.OBJHandler import OBJHandler
 from src.Clipping import *
+from src.Objeto3D import Objeto3D
+from src.Ponto3D import Ponto3D
 import numpy as np
-from math import cos, sin, radians
 
 class GraphicsApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Sistema de Coordenada 2D")
-        self.root.resizable(False, False) # Importante para evitar problemas de distorção dos objetos criados
+        self.root.title("Sistema de Coordenada 2D/3D")
+        self.root.resizable(False, False)
 
         self.root.config(bg=theme.BG_COLOR)
         style = ttk.Style(self.root)
@@ -43,9 +44,12 @@ class GraphicsApp:
         self.root.option_add('*TCombobox*Listbox.selectForeground', theme.FG_COLOR)
 
         self.display_file = DisplayFile()
-        # TODO: ajeitar dimensao da viewport nas prox entregas
-        self.viewport = Viewport(10, 10, 780, 780)  # para testar clipping
+        self.viewport = Viewport(10, 10, 780, 780)
         self.window = Window(-500.0, -500.0, 500.0, 500.0)
+
+        self.vrp = [0, 0, 500]
+        self.vpn = [0, 0, 1]
+        self.vup = [0, 1, 0]
 
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -105,12 +109,10 @@ class GraphicsApp:
         self.clear_button = ttk.Button(self.controls_frame, text="Limpar Cena", command=self.clear_scene)
         self.clear_button.pack(fill=tk.X, pady=5)
 
-        info_text = "Navegação:\n- Setas do teclado para mover\n- Scroll do mouse para zoom"
+        info_text = "Navegação 3D:\nWASD, QE"
         ttk.Label(self.controls_frame, text=info_text, justify=tk.LEFT).pack(fill=tk.X, pady=(20, 0))
 
-        # Menus
         menubar = tk.Menu(self.root)
-
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Importar .obj", command=self.import_obj)
         file_menu.add_command(label="Exportar .obj", command=self.export_obj)
@@ -127,6 +129,13 @@ class GraphicsApp:
         self.root.bind("<KeyPress-Down>", lambda e: self.move_window(0, -50))
         self.root.bind("<KeyPress-Left>", lambda e: self.move_window(-50, 0))
         self.root.bind("<KeyPress-Right>", lambda e: self.move_window(50, 0))
+        
+        self.root.bind("<w>", lambda e: self.move_camera(0, 50, 0))
+        self.root.bind("<s>", lambda e: self.move_camera(0, -50, 0))
+        self.root.bind("<a>", lambda e: self.move_camera(-50, 0, 0))
+        self.root.bind("<d>", lambda e: self.move_camera(50, 0, 0))
+        self.root.bind("<q>", lambda e: self.move_camera(0, 0, 50))
+        self.root.bind("<e>", lambda e: self.move_camera(0, 0, -50))
 
         self.canvas.bind("<MouseWheel>", self.zoom_window)
         self.canvas.bind("<Button-4>", lambda e: self.zoom_window(e, 0.9))
@@ -137,6 +146,12 @@ class GraphicsApp:
         self.canvas.bind("<ButtonRelease-1>", lambda e: self.on_mouse_release(e))
         self._drag_data = {"x": 0, "y": 0}
 
+        self.redraw()
+
+    def move_camera(self, dx, dy, dz):
+        self.vrp[0] += dx
+        self.vrp[1] += dy
+        self.vrp[2] += dz
         self.redraw()
 
     def add_object(self):
@@ -189,9 +204,21 @@ class GraphicsApp:
 
     def redraw(self):
         self.canvas.delete("all")
-        for obj in self.display_file.objects:
-            clipped = None
+        view_mat = view_transform_matrix(self.vrp, self.vpn, self.vup)
 
+        for obj in self.display_file.objects:
+            if isinstance(obj, Objeto3D):
+                screen_segments = []
+                for p1, p2 in obj.segments:
+                    p1_prime = np.dot(view_mat, p1.coords)
+                    p2_prime = np.dot(view_mat, p2.coords)
+                    
+                    sc1 = transform_coordinates((p1_prime[0], p1_prime[1]), self.window, self.viewport)
+                    sc2 = transform_coordinates((p2_prime[0], p2_prime[1]), self.window, self.viewport)
+                    self.canvas.create_line(sc1, sc2, fill=theme.WIREFRAME_COLOR, width=2)
+                continue
+
+            clipped = None
             if obj.type == "Point":
                 if clip_point(obj.world_coords[0], self.window):
                     clipped = [obj.world_coords[0]]
@@ -209,7 +236,6 @@ class GraphicsApp:
                 clipped_segments = []
                 for segment in obj.get_segments():
                     clipped_segments.extend(clip_bezier(segment, self.window))
-                
                 if clipped_segments:
                     screen_coords = []
                     for segment in clipped_segments:
@@ -217,51 +243,39 @@ class GraphicsApp:
                         for t in np.linspace(0, 1, 100):
                             points_to_draw.append(de_casteljau(segment, t))
                         screen_coords.extend([transform_coordinates(p, self.window, self.viewport) for p in points_to_draw])
-                    
                     if len(screen_coords) >= 2:
                         self.canvas.create_line(screen_coords, fill=theme.BEZIER_COLOR, width=2)
+
             elif obj.type == "BSpline":
                 curve_points = obj.generate_points(num_steps=20) 
-                
                 for i in range(len(curve_points) - 1):
                     p1 = curve_points[i]
                     p2 = curve_points[i+1]
-                    
                     segment_clipped = None
                     if self.line_clip_alg.get() == "CS":
                         segment_clipped = clip_line_cs(p1, p2, self.window)
                     else:
                         segment_clipped = clip_line_lb(p1, p2, self.window)
-                    
                     if segment_clipped:
                         sc = [transform_coordinates(p, self.window, self.viewport) for p in segment_clipped]
                         if len(sc) >= 2:
                             self.canvas.create_line(sc, fill=theme.BSPLINE_COLOR, width=2)
 
-
             if clipped:
-                if obj.type != "Bezier Curve": # A curva de Bézier já foi desenhada
+                if obj.type != "Bezier Curve":
                     screen_coords = [transform_coordinates(p, self.window, self.viewport) for p in clipped]
-
                     if obj.type == "Point":
                         for x, y in screen_coords:
-                            self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, 
-                                                fill=theme.POINT_COLOR, outline=theme.POINT_COLOR)
-                    
+                            self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=theme.POINT_COLOR, outline=theme.POINT_COLOR)
                     elif obj.type == "Line":
                         if len(screen_coords) >= 2:
                             self.canvas.create_line(screen_coords, fill=theme.LINE_COLOR, width=2)
-                    
                     elif obj.type == "Wireframe":
                         if len(screen_coords) >= 2:
                             for i in range(len(screen_coords)):
                                 next_i = (i + 1) % len(screen_coords)
-                                self.canvas.create_line(
-                                    screen_coords[i][0], screen_coords[i][1],
-                                    screen_coords[next_i][0], screen_coords[next_i][1],
-                                    fill=theme.WIREFRAME_COLOR, width=2
-                                )
-        
+                                self.canvas.create_line(screen_coords[i][0], screen_coords[i][1], screen_coords[next_i][0], screen_coords[next_i][1], fill=theme.WIREFRAME_COLOR, width=2)
+
     def on_mouse_press(self, event):
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
@@ -272,10 +286,8 @@ class GraphicsApp:
         dy = event.y - self._drag_data["y"]
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
-
         dx_local_wc = -dx * (self.window.width()  / self.viewport.width())
         dy_local_wc =  dy * (self.window.height() / self.viewport.height())
-
         self.window.move_local(dx_local_wc, dy_local_wc)
         self.redraw()
 
@@ -290,21 +302,20 @@ class GraphicsApp:
         index = selection[0]
         return self.display_file.objects[index]
 
-
     def translate_object(self):
         obj = self.get_selected_object()
-        if not obj:
-            return
-
+        if not obj: return
         def apply():
             try:
-                dx_local = float(entry_dx.get())
-                dy_local = float(entry_dy.get())
-                theta = radians(self.window.angle)
-                dx_wc =  cos(theta) * dx_local - sin(theta) * dy_local
-                dy_wc =  sin(theta) * dx_local + cos(theta) * dy_local
-                matrix = translation_matrix(dx_wc, dy_wc)
-                obj.apply_transformation(matrix)
+                if isinstance(obj, Objeto3D):
+                    dx, dy, dz = float(entry_dx.get()), float(entry_dy.get()), float(entry_dz.get())
+                    obj.apply_transformation(translation_matrix(dx, dy, dz))
+                else:
+                    dx_local, dy_local = float(entry_dx.get()), float(entry_dy.get())
+                    theta = radians(self.window.angle)
+                    dx_wc = cos(theta) * dx_local - sin(theta) * dy_local
+                    dy_wc = sin(theta) * dx_local + cos(theta) * dy_local
+                    obj.apply_transformation(translation_matrix(dx_wc, dy_wc))
                 self.redraw()
                 top.destroy()
             except ValueError:
@@ -316,22 +327,24 @@ class GraphicsApp:
         entry_dx = tk.Entry(top); entry_dx.grid(row=0, column=1)
         tk.Label(top, text="dy:").grid(row=1, column=0)
         entry_dy = tk.Entry(top); entry_dy.grid(row=1, column=1)
-        tk.Button(top, text="Aplicar", command=apply).grid(row=2, column=0, columnspan=2)
+        if isinstance(obj, Objeto3D):
+            tk.Label(top, text="dz:").grid(row=2, column=0)
+            entry_dz = tk.Entry(top); entry_dz.grid(row=2, column=1)
+        tk.Button(top, text="Aplicar", command=apply).grid(row=3, column=0, columnspan=2)
 
     def scale_object(self):
         obj = self.get_selected_object()
-        if not obj:
-            return
-
+        if not obj: return
         def apply():
             try:
-                sx = float(entry_sx.get())
-                sy = float(entry_sy.get())
-
-                transforms = [('scale', (sx, sy))]
-                matrix = build_transformation_matrix(transforms, center=obj.get_center())
-
-                obj.apply_transformation(matrix)
+                sx, sy = float(entry_sx.get()), float(entry_sy.get())
+                if isinstance(obj, Objeto3D):
+                    sz = float(entry_sz.get())
+                    obj.transform_to_center(scaling_matrix(sx, sy, sz))
+                else:
+                    transforms = [('scale', (sx, sy))]
+                    matrix = build_transformation_matrix(transforms, center=obj.get_center())
+                    obj.apply_transformation(matrix)
                 self.redraw()
                 top.destroy()
             except ValueError:
@@ -343,21 +356,30 @@ class GraphicsApp:
         entry_sx = tk.Entry(top); entry_sx.grid(row=0, column=1)
         tk.Label(top, text="sy:").grid(row=1, column=0)
         entry_sy = tk.Entry(top); entry_sy.grid(row=1, column=1)
-        tk.Button(top, text="Aplicar", command=apply).grid(row=2, column=0, columnspan=2)
-
+        if isinstance(obj, Objeto3D):
+            tk.Label(top, text="sz:").grid(row=2, column=0)
+            entry_sz = tk.Entry(top); entry_sz.grid(row=2, column=1)
+        tk.Button(top, text="Aplicar", command=apply).grid(row=3, column=0, columnspan=2)
 
     def rotate_object(self):
         obj = self.get_selected_object()
-        if not obj:
-            return
-
+        if not obj: return
         def apply():
             try:
                 angle = float(entry_angle.get())
-                transforms = [('rotate', angle)]
-                matrix = build_transformation_matrix(transforms, center=obj.get_center())
-
-                obj.apply_transformation(matrix)
+                if isinstance(obj, Objeto3D):
+                    axis = axis_var.get()
+                    if axis == "X": mat = rotation_x_matrix(angle)
+                    elif axis == "Y": mat = rotation_y_matrix(angle)
+                    elif axis == "Z": mat = rotation_z_matrix(angle)
+                    else:
+                         vx, vy, vz = float(evx.get()), float(evy.get()), float(evz.get())
+                         mat = rotation_arbitrary_matrix(obj.get_center(), (vx, vy, vz), angle)
+                    obj.transform_to_center(mat)
+                else:
+                    transforms = [('rotate', angle)]
+                    matrix = build_transformation_matrix(transforms, center=obj.get_center())
+                    obj.apply_transformation(matrix)
                 self.redraw()
                 top.destroy()
             except ValueError:
@@ -367,7 +389,18 @@ class GraphicsApp:
         top.title("Rotação")
         tk.Label(top, text="Ângulo (graus):").grid(row=0, column=0)
         entry_angle = tk.Entry(top); entry_angle.grid(row=0, column=1)
-        tk.Button(top, text="Aplicar", command=apply).grid(row=1, column=0, columnspan=2)
+        
+        if isinstance(obj, Objeto3D):
+            axis_var = tk.StringVar(value="Z")
+            tk.Label(top, text="Eixo:").grid(row=1, column=0)
+            ttk.Combobox(top, textvariable=axis_var, values=["X", "Y", "Z", "Arbitrario"]).grid(row=1, column=1)
+            tk.Label(top, text="Arb. Vec (x,y,z):").grid(row=2, column=0)
+            f = tk.Frame(top); f.grid(row=2, column=1)
+            evx = tk.Entry(f, width=5); evx.pack(side=tk.LEFT)
+            evy = tk.Entry(f, width=5); evy.pack(side=tk.LEFT)
+            evz = tk.Entry(f, width=5); evz.pack(side=tk.LEFT)
+
+        tk.Button(top, text="Aplicar", command=apply).grid(row=3, column=0, columnspan=2)
 
     def apply_window_rotation(self):
         try:
@@ -378,13 +411,8 @@ class GraphicsApp:
             messagebox.showerror("Erro", "Ângulo inválido.")
     
     def import_obj(self):
-        filepath = filedialog.askopenfilename(
-            title="Abrir Arquivo .obj",
-            filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
-        )
-        if not filepath:
-            return
-        
+        filepath = filedialog.askopenfilename(title="Abrir Arquivo .obj", filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*")))
+        if not filepath: return
         try:
             self.display_file = OBJHandler.load_from_obj(filepath)
             self.objects_listbox.delete(0, tk.END)
@@ -395,14 +423,8 @@ class GraphicsApp:
             messagebox.showerror("Erro de Importação", f"Não foi possível ler o arquivo:\n{e}")
 
     def export_obj(self):
-        filepath = filedialog.asksaveasfilename(
-            title="Salvar Arquivo .obj",
-            defaultextension=".obj",
-            filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*"))
-        )
-        if not filepath:
-            return
-        
+        filepath = filedialog.asksaveasfilename(title="Salvar Arquivo .obj", defaultextension=".obj", filetypes=(("Wavefront OBJ", "*.obj"), ("Todos os arquivos", "*.*")))
+        if not filepath: return
         try:
             OBJHandler.save_to_obj(self.display_file, filepath)
             messagebox.showinfo("Sucesso", f"Cena salva em {filepath}")

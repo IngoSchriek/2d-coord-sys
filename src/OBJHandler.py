@@ -1,107 +1,99 @@
 from src.DisplayFile import DisplayFile
 from src.Point import Point
 from src.Line import Line
-from src.Wireframe import Wireframe
-from typing import List, Tuple
+from src.Objeto3D import Objeto3D
+from src.Ponto3D import Ponto3D
+from typing import List
 
 class OBJHandler:
     @staticmethod
     def save_to_obj(display_file: DisplayFile, filename: str):
         with open(filename, 'w') as f:
-            f.write("# Arquivo OBJ gerado pelo Sistema Gráfico Interativo\n\n")
-
-            vertex_offset = 1  # Índices em .obj começam em 1
+            f.write("# OBJ exportado\n\n")
+            vertex_offset = 1
             for obj in display_file.objects:
-                if not obj.world_coords:
-                    continue
+                if isinstance(obj, Objeto3D):
+                    unique_points = []
+                    point_map = {} 
+                    for p1, p2 in obj.segments:
+                        if p1 not in point_map:
+                            point_map[p1] = len(unique_points) + 1
+                            unique_points.append(p1)
+                        if p2 not in point_map:
+                            point_map[p2] = len(unique_points) + 1
+                            unique_points.append(p2)
+                    
+                    f.write(f"o {obj.name}\n")
+                    for p in unique_points:
+                        f.write(f"v {p.x} {p.y} {p.z}\n")
+                    
+                    for p1, p2 in obj.segments:
+                        idx1 = vertex_offset + point_map[p1] - 1
+                        idx2 = vertex_offset + point_map[p2] - 1
+                        f.write(f"l {idx1} {idx2}\n")
+                    
+                    vertex_offset += len(unique_points)
+                    f.write("\n")
                 
-                f.write(f"o {obj.name}\n")
-                
-                # Escreve os vértices do objeto
-                for x, y in obj.world_coords:
-                    f.write(f"v {x} {y} 0.0\n")
-                
-                # Escreve a conectividade (arestas/linhas)
-                if obj.type == "Line":
-                    f.write(f"l {vertex_offset} {vertex_offset + 1}\n")
-                elif obj.type == "Wireframe":
-                    num_vertices = len(obj.world_coords)
-                    for i in range(num_vertices):
-                        start_index = vertex_offset + i
-                        end_index = vertex_offset + ((i + 1) % num_vertices)
-                        f.write(f"l {start_index} {end_index}\n")
-                
-                vertex_offset += len(obj.world_coords)
-                f.write("\n")
+                # Suporte legado para objetos 2D
+                elif hasattr(obj, 'world_coords'):
+                    f.write(f"o {obj.name}\n")
+                    for x, y in obj.world_coords:
+                        f.write(f"v {x} {y} 0.0\n")
+                    if obj.type == "Line":
+                        f.write(f"l {vertex_offset} {vertex_offset + 1}\n")
+                    elif obj.type == "Wireframe":
+                        for i in range(len(obj.world_coords)):
+                            s = vertex_offset + i
+                            e = vertex_offset + ((i + 1) % len(obj.world_coords))
+                            f.write(f"l {s} {e}\n")
+                    vertex_offset += len(obj.world_coords)
+                    f.write("\n")
 
     @staticmethod
     def load_from_obj(filename: str) -> DisplayFile:
         display_file = DisplayFile()
-        vertices: List[Tuple[float, float]] = []
+        vertices = [] 
         
         with open(filename, 'r') as f:
-            current_object_name = None
-            object_coords: List[Tuple[float, float]] = []
+            current_name = None
+            current_lines = []
             
-            object_lines = {}
-
             for line in f:
                 parts = line.strip().split()
-                if not parts:
-                    continue
+                if not parts: continue
                 
-                command = parts[0]
-
-                if command == 'v':
-                    # Armazena todos os vértices do arquivo
-                    x, y = float(parts[1]), float(parts[2])
-                    vertices.append((x, y))
+                if parts[0] == 'v':
+                    x = float(parts[1])
+                    y = float(parts[2])
+                    z = float(parts[3]) if len(parts) > 3 else 0.0
+                    vertices.append(Ponto3D(x, y, z))
                 
-                elif command == 'o':
-                    # Se encontrarmos um novo objeto, processamos o anterior
-                    if current_object_name and object_coords:
-                        OBJHandler._create_object(display_file, current_object_name, object_coords, object_lines.get(current_object_name, []))
-                    
-                    current_object_name = parts[1]
-                    object_coords = []
-                    object_lines[current_object_name] = []
+                elif parts[0] == 'o':
+                    if current_name and current_lines:
+                        OBJHandler._create_object3d(display_file, current_name, vertices, current_lines)
+                    current_name = parts[1]
+                    current_lines = []
 
-                elif command == 'l':
-                    if current_object_name:
-                        # Armazena os índices dos vértices que formam uma linha
-                        line_indices = [int(p.split('/')[0]) - 1 for p in parts[1:]]
-                        object_lines[current_object_name].append(line_indices)
-            
-            # Processa o último objeto do arquivo
-            if current_object_name:
-                 OBJHandler._create_object(display_file, current_object_name, object_coords, object_lines.get(current_object_name, []))
+                elif parts[0] == 'l':
+                    indices = [int(p.split('/')[0]) for p in parts[1:]]
+                    for i in range(len(indices) - 1):
+                        current_lines.append((indices[i], indices[i+1]))
+                    if len(indices) > 2:
+                         current_lines.append((indices[-1], indices[0]))
+
+            if current_name and current_lines:
+                OBJHandler._create_object3d(display_file, current_name, vertices, current_lines)
         
-        # Reconstrói as coordenadas dos objetos a partir das linhas lidas
-        for obj in display_file.objects:
-            if obj.name in object_lines:
-                obj_indices = set()
-                for line_def in object_lines[obj.name]:
-                    for index in line_def:
-                        obj_indices.add(index)
-                
-                # Garante a ordem original dos vértices
-                sorted_indices = sorted(list(obj_indices))
-                obj.world_coords = [vertices[i] for i in sorted_indices]
-
         return display_file
 
     @staticmethod
-    def _create_object(display_file, name, coords, lines):
-        num_vertices = len(coords)
-        num_lines = len(lines)
-
-        obj = None
-        if num_lines == 0 and num_vertices == 1:
-            obj = Point(name, coords)
-        elif num_lines == 1 and num_vertices == 2:
-            obj = Line(name, coords)
-        else:
-            obj = Wireframe(name, coords)
-        
-        if obj:
-            display_file.add_object(obj)
+    def _create_object3d(display_file, name, all_vertices, lines_indices):
+        obj = Objeto3D(name)
+        for idx1, idx2 in lines_indices:
+            p1 = all_vertices[idx1 - 1]
+            p2 = all_vertices[idx2 - 1]
+            new_p1 = Ponto3D(p1.x, p1.y, p1.z)
+            new_p2 = Ponto3D(p2.x, p2.y, p2.z)
+            obj.add_segment(new_p1, new_p2)
+        display_file.add_object(obj)
