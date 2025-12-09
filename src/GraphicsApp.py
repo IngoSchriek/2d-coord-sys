@@ -1,4 +1,5 @@
 import tkinter as tk
+from src.BSplineSurface import BSplineSurface
 from tkinter import ttk, messagebox, filedialog
 from src.Window import Window
 from src.Viewport import Viewport, transform_coordinates
@@ -100,7 +101,7 @@ class GraphicsApp:
         ttk.Label(self.controls_frame, text="Tipo:").pack(fill=tk.X, pady=(0, 5))
         self.obj_type_var = tk.StringVar(value="Point")
         self.obj_type_menu = ttk.Combobox(self.controls_frame, textvariable=self.obj_type_var,
-                                          values=["Point", "Line", "Wireframe", "Bezier Curve", "BSpline", "Bicubic Surface"], state="readonly")
+                                  values=["Point", "Line", "Wireframe", "Bezier Curve", "BSpline", "Bicubic Surface", "BSpline Surface"], state="readonly")
         self.obj_type_menu.pack(fill=tk.X, pady=(0, 10))
 
         self.add_button = ttk.Button(self.controls_frame, text="Adicionar Objeto", command=self.add_object)
@@ -194,6 +195,13 @@ class GraphicsApp:
                 obj = BicubicSurface(name)
                 points_3d = [Ponto3D(x, y, z) for x, y, z in coords]
                 obj.add_patch(points_3d)
+            elif obj_type == "BSpline Surface":
+                obj = BSplineSurface(name)
+                matrix_p3d = []
+                for row in coords:
+                    matrix_row = [Ponto3D(x, y, z) for x, y, z in row]
+                    matrix_p3d.append(matrix_row)
+                obj.set_control_points(matrix_p3d)
             if obj:
                 self.display_file.add_object(obj)
                 self.objects_listbox.insert(tk.END, f"{obj.name} ({obj.type})")

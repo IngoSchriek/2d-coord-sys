@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import List, Tuple
 import src.theme as theme
 import re
 
@@ -39,10 +38,12 @@ class ObjectCreationWindow(tk.Toplevel):
             self.create_line()
         elif self.obj_type == "Wireframe":
             self.create_wireframe()
-        elif self.obj_type == "Bezier Curve" or self.obj_type == "BSpline":
+        elif self.obj_type in ["Bezier Curve", "BSpline"]:
             self.create_bezier()
         elif self.obj_type == "Bicubic Surface":
-            self.create_bicubic()
+            self.create_bicubic_bezier()
+        elif self.obj_type == "BSpline Surface":
+            self.create_bicubic_bspline()
 
         ok_button = ttk.Button(button_frame, text="Criar", command=self.on_ok)
         ok_button.pack(side=tk.RIGHT, padx=(5, 0))
@@ -103,15 +104,6 @@ class ObjectCreationWindow(tk.Toplevel):
         self.bezier_text.pack(fill=tk.BOTH, expand=True)
         self.bezier_text.focus_set()
     
-    def create_bicubic(self):
-        instrucoes = "Formato: (x,y,z),(x,y,z)... \nUse ';' para separar as linhas da matriz 4x4.\nSão necessários 16 pontos."
-        ttk.Label(self.content_frame, text=instrucoes).pack(anchor="w", pady=(0,5))
-        self.bezier_text = tk.Text(self.content_frame, height=12, width=50, background=theme.WIDGET_BG, foreground=theme.FG_COLOR, insertbackground=theme.FG_COLOR)
-        self.bezier_text.pack(fill=tk.BOTH, expand=True)
-        example = "(0,0,0),(10,0,10),(20,0,10),(30,0,0);\n(0,10,10),(10,10,20),(20,10,20),(30,10,10);\n(0,20,10),(10,20,20),(20,20,20),(30,20,10);\n(0,30,0),(10,30,10),(20,30,10),(30,30,0)"
-        self.bezier_text.insert("1.0", example)
-        self.bezier_text.focus_set()
-
     def add_point(self):
         try:
             x = float(self.wf_entry_x.get())
@@ -131,6 +123,23 @@ class ObjectCreationWindow(tk.Toplevel):
             self.points_listbox.delete(i)
             del self.wireframe_points[i]
 
+    def create_bicubic_bezier(self):
+        instrucoes = "Formato: (x,y,z),(x,y,z)... \nSepare as 4 linhas com ';'. Necessários 16 pontos."
+        ttk.Label(self.content_frame, text=instrucoes).pack(anchor="w", pady=(0,5))
+        self.bezier_text = tk.Text(self.content_frame, height=12, width=50, background=theme.WIDGET_BG, foreground=theme.FG_COLOR, insertbackground=theme.FG_COLOR)
+        self.bezier_text.pack(fill=tk.BOTH, expand=True)
+        example = "(0,0,0),(30,0,10),(60,0,10),(90,0,0);\n(0,30,10),(30,30,30),(60,30,30),(90,30,10);\n(0,60,10),(30,60,30),(60,60,30),(90,60,10);\n(0,90,0),(30,90,10),(60,90,10),(90,90,0)"
+        self.bezier_text.insert("1.0", example)
+
+    def create_bicubic_bspline(self):
+        instrucoes = "Formato B-Spline: (x,y,z),(x,y,z)... ; (x,y,z)...\nUse ';' para nova linha. Mínimo 4x4. Suporta até 20x20."
+        ttk.Label(self.content_frame, text=instrucoes).pack(anchor="w", pady=(0,5))
+        self.bezier_text = tk.Text(self.content_frame, height=12, width=50, background=theme.WIDGET_BG, foreground=theme.FG_COLOR, insertbackground=theme.FG_COLOR)
+        self.bezier_text.pack(fill=tk.BOTH, expand=True)
+        
+        example = "(0,0,0),(20,0,10),(40,0,10),(60,0,10),(80,0,0);\n(0,20,10),(20,20,30),(40,20,30),(60,20,30),(80,20,10);\n(0,40,10),(20,40,30),(40,40,30),(60,40,30),(80,40,10);\n(0,60,0),(20,60,10),(40,60,10),(60,60,10),(80,60,0)"
+        self.bezier_text.insert("1.0", example)
+
     def on_ok(self):
         try:
             if self.obj_type == "Point":
@@ -145,13 +154,35 @@ class ObjectCreationWindow(tk.Toplevel):
                 points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
                 if len(points) < 4: raise ValueError("Mínimo de 4 pontos.")
                 self.result = [(float(x), float(y)) for x, y in points]
+
             elif self.obj_type == "Bicubic Surface":
                 text = self.bezier_text.get("1.0", tk.END).strip()
-                raw_points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
-                if len(raw_points) != 16:
-                    messagebox.showerror("Erro", f"São necessários exatamente 16 pontos. Encontrados: {len(raw_points)}", parent=self)
-                    return
-                self.result = [(float(x), float(y), float(z)) for x, y, z in raw_points]
+                points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", text)
+                if len(points) != 16: raise ValueError(f"Bicubic Bezier precisa de exatamente 16 pontos. Encontrados {len(points)}.")
+                self.result = [(float(x), float(y), float(z)) for x, y, z in points]
+            
+            elif self.obj_type == "BSpline Surface":
+                text = self.bezier_text.get("1.0", tk.END).strip()
+                rows_text = text.split(';')
+                matrix = []
+                for row_str in rows_text:
+                    if not row_str.strip(): continue
+                    row_points = re.findall(r"\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)", row_str)
+                    if row_points:
+                        matrix.append([(float(x), float(y), float(z)) for x, y, z in row_points])
+                
+                if not matrix: raise ValueError("Nenhum ponto encontrado.")
+                
+                n_rows = len(matrix)
+                n_cols = len(matrix[0])
+                if n_rows < 4 or n_cols < 4:
+                    raise ValueError(f"Grid B-Spline deve ser pelo menos 4x4. Atual: {n_rows}x{n_cols}")
+                
+                for i, row in enumerate(matrix):
+                    if len(row) != n_cols:
+                        raise ValueError(f"Linha {i+1} tem {len(row)} colunas, esperado {n_cols}.")
+                
+                self.result = matrix
 
             self.destroy()
         except Exception as e:
